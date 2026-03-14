@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Face Landmark Tracker</title>
+
+<!-- Google Font -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+<style>
+body {
+    margin:0;
+    font-family: 'Poppins', sans-serif;
+    background: linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    min-height:100vh;
+    color:white;
+}
+
+.container {
+    width:90%;
+    max-width:900px;
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(15px);
+    border-radius:20px;
+    padding:30px;
+    box-shadow:0 10px 40px rgba(0,0,0,0.4);
+    text-align:center;
+}
+
+h1 {
+    margin-bottom:10px;
+    font-weight:600;
+}
+
+.upload-box {
+    border:2px dashed rgba(255,255,255,0.4);
+    padding:30px;
+    border-radius:15px;
+    cursor:pointer;
+    transition:0.3s;
+}
+
+.upload-box:hover {
+    background:rgba(255,255,255,0.1);
+}
+
+canvas {
+    margin-top:20px;
+    max-width:100%;
+    border-radius:15px;
+    display:none;
+}
+
+.controls {
+    margin-top:20px;
+}
+
+button {
+    margin:5px;
+    padding:10px 18px;
+    border:none;
+    border-radius:30px;
+    background:#00c6ff;
+    color:white;
+    font-weight:600;
+    cursor:pointer;
+    transition:0.3s;
+}
+
+button:hover {
+    transform:scale(1.05);
+    background:#0072ff;
+}
+
+.status {
+    margin-top:15px;
+    font-size:18px;
+    font-weight:600;
+}
+
+.loader {
+    margin-top:10px;
+    display:none;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h1>✨ AI Face Landmark Tracker</h1>
+    <p>Upload an image to detect faces, landmarks & smiles</p>
+
+    <div class="upload-box" id="uploadBox">
+        Click or Drag & Drop Image Here
+        <input type="file" id="imageUpload" hidden accept="image/*">
+    </div>
+
+    <div class="loader" id="loader">🔄 Processing...</div>
+    <div class="status" id="status">Faces Detected: 0</div>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <button onclick="toggleLandmarks()">Toggle Landmarks</button>
+        <button onclick="toggleBox()">Toggle Box</button>
+        <button onclick="toggleSmile()">Toggle Smile</button>
+        <button onclick="resetApp()">Reset</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const statusText = document.getElementById("status");
+const loader = document.getElementById("loader");
+
+let showLandmarks = true;
+let showBox = true;
+let showSmile = true;
+let currentImage = null;
+
+const faceMesh = new FaceMesh({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+});
+
+faceMesh.setOptions({
+    maxNumFaces: 10,
+    refineLandmarks: true,
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.6
+});
+
+faceMesh.onResults(onResults);
+
+// Upload handling
+const uploadBox = document.getElementById("uploadBox");
+const imageUpload = document.getElementById("imageUpload");
+
+uploadBox.addEventListener("click",()=> imageUpload.click());
+
+imageUpload.addEventListener("change", handleImage);
+
+function handleImage(e){
+    const file = e.target.files[0];
+    if(!file) return;
+
+    loader.style.display="block";
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+
+    img.onload = () => {
+        currentImage = img;
+        canvas.width = img.width;
+        canvas.height = img.height;
+        canvas.style.display="block";
+        faceMesh.send({image: img});
+    }
+}
+
+function onResults(results){
+    loader.style.display="none";
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(results.image,0,0,canvas.width,canvas.height);
+
+    if(results.multiFaceLandmarks?.length){
+        const count = results.multiFaceLandmarks.length;
+        statusText.innerText = `Faces Detected: ${count}`;
+        statusText.style.color="#00ffae";
+
+        for(const landmarks of results.multiFaceLandmarks){
+
+            if(showBox){
+                let minX=1,maxX=0,minY=1,maxY=0;
+                landmarks.forEach(l=>{
+                    minX=Math.min(minX,l.x);
+                    maxX=Math.max(maxX,l.x);
+                    minY=Math.min(minY,l.y);
+                    maxY=Math.max(maxY,l.y);
+                });
+
+                ctx.strokeStyle="red";
+                ctx.lineWidth=3;
+                ctx.strokeRect(
+                    minX*canvas.width,
+                    minY*canvas.height,
+                    (maxX-minX)*canvas.width,
+                    (maxY-minY)*canvas.height
+                );
+            }
+
+            if(showLandmarks){
+                drawConnectors(ctx, landmarks, FACEMESH_TESSELATION,
+                    {color:'#00FFAA', lineWidth:1});
+            }
+
+            if(showSmile){
+                const left=landmarks[61];
+                const right=landmarks[291];
+                const top=landmarks[13];
+                const bottom=landmarks[14];
+
+                const width = Math.hypot(right.x-left.x,right.y-left.y)*canvas.width;
+                const height = Math.hypot(bottom.x-top.x,bottom.y-top.y)*canvas.height;
+
+                if(height>0 && (width/height)>2.5){
+                    ctx.fillStyle="yellow";
+                    ctx.font="bold 22px Poppins";
+                    ctx.fillText("😊 Smile", left.x*canvas.width, top.y*canvas.height-20);
+                }
+            }
+        }
+
+    } else {
+        statusText.innerText="Faces Detected: 0";
+        statusText.style.color="red";
+    }
+}
+
+// Toggle functions
+function toggleLandmarks(){ showLandmarks=!showLandmarks; redraw(); }
+function toggleBox(){ showBox=!showBox; redraw(); }
+function toggleSmile(){ showSmile=!showSmile; redraw(); }
+
+function redraw(){
+    if(currentImage){
+        faceMesh.send({image: currentImage});
+    }
+}
+
+function resetApp(){
+    canvas.style.display="none";
+    statusText.innerText="Faces Detected: 0";
+    imageUpload.value="";
+}
+</script>
+
+</body>
+</html>
