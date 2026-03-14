@@ -26,5 +26,4 @@ The application uses MediaPipe FaceMesh to analyze the uploaded image and detect
 2. The AI processes the image.
 3. Detected faces and landmarks appear on the canvas.
 
-A responsive personal portfolio website to showcase my web development projects, skills, and creative work.
 [Click Here To See Website](https://codewithfatima11.github.io/AI_Face_LandMark_Tracker/)
